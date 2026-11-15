@@ -24,15 +24,31 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchains/gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git toolchains/gcc32
 
-      - name: Integrate KernelSU Next (Legacy)
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-
       - name: Configure and Compile Kernel
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           export PATH="$PWD/toolchains/clang/bin:$PWD/toolchains/gcc64/bin:$PWD/toolchains/gcc32/bin:$PATH"
+
+          echo "Available vendor configs:"
+          find arch/arm64/configs -type f
+
+          BASE_CFG="vendor/sdm660-perf_defconfig"
+          FRAGMENTS=$(cd arch/arm64/configs && find vendor -type f \( -name "*ganges*" -o -name "*kirin*" \) | sort)
+
+          echo "Using base: $BASE_CFG"
+          echo "Using fragments: $FRAGMENTS"
+
+          make O=out $BASE_CFG $FRAGMENTS
+          ./scripts/config --file out/.config -e CONFIG_KPROBES -e CONFIG_HAVE_KPROBES -e CONFIG_KPROBE_EVENTS
+          make O=out olddefconfig
+
+          make -j$(nproc) O=out \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
           
           if [ -f arch/arm64/configs/kirin_defconfig ]; then
             DEFCONFIG=kirin_defconfig
