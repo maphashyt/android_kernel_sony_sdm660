@@ -17,54 +17,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex git libssl-dev libncurses5-dev lz4 python3 unzip zip
 
-      - name: Download Toolchains (Clang & GCC)
+      - name: Download Modern Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git toolchains/clang
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchains/gcc64
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git toolchains/gcc32
+          mkdir -p toolchains/clang
+          CLANG_URL=$(curl -sL https://raw.githubusercontent.com/ZyCromerZ/Clang/main/Clang-main-link.txt | tr -d '\r\n')
+          curl -sL "$CLANG_URL" -o clang.tar.gz
+          tar -xzf clang.tar.gz -C toolchains/clang
+          rm -f clang.tar.gz
+
+      - name: Integrate KernelSU Next (Legacy)
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
       - name: Configure and Compile Kernel
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/toolchains/clang/bin:$PWD/toolchains/gcc64/bin:$PWD/toolchains/gcc32/bin:$PATH"
+          CLANG_BIN=$(dirname "$(find "$PWD/toolchains/clang" -name clang -type f | head -n 1)")
+          export PATH="$CLANG_BIN:$PATH"
 
-          echo "Available vendor configs:"
-          find arch/arm64/configs -type f
+          make O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            vendor/sdm660-perf_defconfig \
+            vendor/sony/common.config \
+            vendor/sony/kirin.config
 
-          BASE_CFG="vendor/sdm660-perf_defconfig"
-          FRAGMENTS=$(cd arch/arm64/configs && find vendor -type f \( -name "*ganges*" -o -name "*kirin*" \) | sort)
-
-          echo "Using base: $BASE_CFG"
-          echo "Using fragments: $FRAGMENTS"
-
-          make O=out $BASE_CFG $FRAGMENTS
           ./scripts/config --file out/.config -e CONFIG_KPROBES -e CONFIG_HAVE_KPROBES -e CONFIG_KPROBE_EVENTS
-          make O=out olddefconfig
+          yes "" | make O=out LLVM=1 LLVM_IAS=1 olddefconfig
 
           make -j$(nproc) O=out \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi-
-
-          
-          if [ -f arch/arm64/configs/kirin_defconfig ]; then
-            DEFCONFIG=kirin_defconfig
-          else
-            DEFCONFIG=vendor/kirin_defconfig
-          fi
-
-          make O=out $DEFCONFIG
-          ./scripts/config --file out/.config -e CONFIG_KPROBES -e CONFIG_HAVE_KPROBES -e CONFIG_KPROBE_EVENTS
-          make O=out olddefconfig
-
-          make -j$(nproc) O=out \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package into AnyKernel3 Zip
         run: |
