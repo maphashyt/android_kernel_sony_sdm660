@@ -15,14 +15,14 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git libssl-dev libncurses5-dev lz4 python3 unzip zip
+          sudo apt-get install -y bc bison build-essential ccache curl flex git libssl-dev libncurses5-dev lld lz4 python3 unzip zip
 
       - name: Download Modern Clang Toolchain
         run: |
           mkdir -p toolchains/clang
           CLANG_URL=$(curl -sL https://raw.githubusercontent.com/ZyCromerZ/Clang/main/Clang-main-link.txt | tr -d '\r\n')
-          curl -sL "$CLANG_URL" -o clang.tar.gz
-          tar -xzf clang.tar.gz -C toolchains/clang
+          curl -fL "$CLANG_URL" -o clang.tar.gz
+          tar -xf clang.tar.gz -C toolchains/clang
           rm -f clang.tar.gz
 
       - name: Integrate KernelSU Next (Legacy)
@@ -33,8 +33,11 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          CLANG_BIN=$(dirname "$(find "$PWD/toolchains/clang" -name clang -type f | head -n 1)")
+          CLANG_BIN=$(dirname "$(find "$PWD/toolchains/clang" -name "ld.lld" | head -n 1)")
           export PATH="$CLANG_BIN:$PATH"
+
+          echo "Using clang at: $(which clang)"
+          echo "Using ld.lld at: $(which ld.lld)"
 
           make O=out \
             LLVM=1 \
