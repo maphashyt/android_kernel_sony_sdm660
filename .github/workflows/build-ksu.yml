@@ -25,9 +25,12 @@ jobs:
           tar -xf clang.tar.gz -C toolchains/clang
           rm -f clang.tar.gz
 
-      - name: Integrate KernelSU Next (Legacy)
+      - name: Integrate KernelSU Next (Legacy) and Manual Syscall Hooks
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          curl -LSs "https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/mainline/Patches/syscall_hook_patches.sh" -o syscall_hook_patches.sh
+          bash syscall_hook_patches.sh
+          grep -n "ksu_handle_sys_reboot" kernel/reboot.c
 
       - name: Configure and Compile Kernel
         run: |
@@ -36,9 +39,6 @@ jobs:
           CLANG_BIN=$(dirname "$(find "$PWD/toolchains/clang" -name "ld.lld" | head -n 1)")
           export PATH="$CLANG_BIN:$PATH"
 
-          echo "Using clang at: $(which clang)"
-          echo "Using ld.lld at: $(which ld.lld)"
-
           make O=out \
             LLVM=1 \
             LLVM_IAS=1 \
@@ -46,12 +46,25 @@ jobs:
             vendor/sony/common.config \
             vendor/sony/kirin.config
 
-          ./scripts/config --file out/.config -e CONFIG_KPROBES -e CONFIG_HAVE_KPROBES -e CONFIG_KPROBE_EVENTS
+          ./scripts/config --file out/.config \
+            -e CONFIG_KSU \
+            -e CONFIG_KSU_MANUAL_HOOK \
+            -d CONFIG_KSU_KPROBES_HOOK \
+            -d CONFIG_KPROBES
+
           yes "" | make O=out LLVM=1 LLVM_IAS=1 olddefconfig
+
+          ./scripts/config --file out/.config \
+            -e CONFIG_KSU \
+            -e CONFIG_KSU_MANUAL_HOOK \
+            -d CONFIG_KSU_KPROBES_HOOK \
+            -d CONFIG_KPROBES
 
           make -j$(nproc) O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CONFIG_KSU=y \
+            CONFIG_KSU_MANUAL_HOOK=y \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
