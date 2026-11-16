@@ -45,9 +45,18 @@ jobs:
           if [ -x "$HOME/clang/bin/clang" ]; then
             export PATH="$HOME/clang/bin:$PATH"
           fi
-          DEFCONFIG=$(cd arch/arm64/configs && find . -name "*kirin*defconfig" | sed 's|^\./||' | head -n 1)
-          echo "Using defconfig: $DEFCONFIG"
-          make O=out ARCH=arm64 "$DEFCONFIG"
+          cd arch/arm64/configs
+          echo "=== Available kirin/sony/sdm660 configs ==="
+          find . -maxdepth 3 \( -iname "*kirin*" -o -iname "*nile*" -o -iname "*sdm660*" \)
+          BASE_DEF=$(find . -maxdepth 3 -name "*kirin*defconfig" | sed 's|^\./||' | head -n 1)
+          if [ -z "$BASE_DEF" ]; then
+            BASE_DEF=$(find . -maxdepth 3 \( -name "sdm660-perf_defconfig" -o -name "sdm660_defconfig" -o -name "*nile*defconfig" \) | sed 's|^\./||' | head -n 1)
+          fi
+          NILE_FRAG=$(find . -maxdepth 3 -name "*nile*.config" | sed 's|^\./||' | head -n 1)
+          KIRIN_FRAG=$(find . -maxdepth 3 -name "*kirin*.config" | sed 's|^\./||' | head -n 1)
+          cd ../../..
+          echo "Using BASE_DEF=$BASE_DEF NILE_FRAG=$NILE_FRAG KIRIN_FRAG=$KIRIN_FRAG"
+          make O=out ARCH=arm64 $BASE_DEF $NILE_FRAG $KIRIN_FRAG
           ./scripts/config --file out/.config -e KSU
           make O=out ARCH=arm64 olddefconfig
           make -j$(nproc --all) O=out ARCH=arm64 \
