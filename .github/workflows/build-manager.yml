@@ -1,0 +1,40 @@
+name: Build Legacy Manager APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout KernelSU-Next (legacy branch)
+        uses: actions/checkout@v4
+        with:
+          repository: KernelSU-Next/KernelSU-Next
+          ref: legacy
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK & NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Rust for ksud
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+          cargo install cargo-ndk || true
+
+      - name: Build Legacy Manager APK
+        run: |
+          cd manager
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Legacy Manager APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KSUNext-Legacy-Manager
+          path: manager/app/build/outputs/apk/debug/*.apk
