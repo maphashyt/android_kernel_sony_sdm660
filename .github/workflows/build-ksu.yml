@@ -1,28 +1,25 @@
-name: Build Xperia 10 KernelSU-Next (UAPI 5)
+name: Build UAPI5 Kernel Clean
 
 on:
+  push:
   workflow_dispatch:
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Install Build Dependencies
+      - name: Install Clang 18 and Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf \
             libelf-dev liblz4-tool libssl-dev libxml2-utils lzop pngcrush rsync schedtool \
-            xsltproc zip zlib1g-dev python3 python-is-python3 lld llvm \
+            xsltproc zip zlib1g-dev python3 python-is-python3 clang lld llvm \
             binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
-
-      - name: Clone Official LineageOS Clang Toolchain
-        run: |
-          git clone --depth 1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git "$HOME/clang"
 
       - name: Integrate KernelSU-Next (UAPI 5 - 465490a2)
         run: |
@@ -35,10 +32,12 @@ jobs:
           if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
             sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
           fi
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          fi
 
       - name: Configure and Compile Image.gz-dtb
         run: |
-          export PATH="$HOME/clang/bin:$PATH"
           which clang
           which ld.lld
           clang --version
@@ -47,8 +46,8 @@ jobs:
 
           make $MAKE_ARGS vendor/sdm660-perf_defconfig vendor/sony/kirin.config
           ./scripts/config --file out/.config -e KSU
-          make $MAKE_ARGS olddefconfig
-          make -j$(nproc --all) $MAKE_ARGS KCFLAGS="-Wno-error" Image.gz-dtb
+          yes "" | make $MAKE_ARGS olddefconfig || make $MAKE_ARGS olddefconfig
+          make -j$(nproc --all) $MAKE_ARGS KCFLAGS="-Wno-unknown-warning-option -Wno-error" Image.gz-dtb
 
       - name: Package Artifacts
         run: |
