@@ -7,12 +7,9 @@ jobs:
   build-apk:
     runs-on: ubuntu-22.04
     steps:
-- name: Checkout KernelSU-Next (UAPI 5)
-  run: |
-    git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
-    cd KernelSU-Next
-    git checkout 465490a2
-
+      - name: Clone KernelSU-Next (v3.4.2)
+        run: |
+          git clone --depth 1 -b v3.4.2 https://github.com/KernelSU-Next/KernelSU-Next.git ksunext
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -27,12 +24,11 @@ jobs:
           mkdir -p ksunext/manager/app/src/main/jniLibs/arm64-v8a
           unzip -p release.apk lib/arm64-v8a/libksud.so > ksunext/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
 
-      - name: Bump Manager Version Suffix to -6 and Build APK
+      - name: Bump Manager UAPI to 6 and Build APK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
           cd ksunext/manager
-          sed -i 's/"-5"/"-6"/g' app/build.gradle.kts
-          find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/(MINIMAL_SUPPORTED_KERNEL[^0-9]*)5/\16/g; s/(managerVersion[^0-9]*)5/\16/g' {} +
+          find . -type f \( -name "*.kts" -o -name "*.kt" -o -name "*.java" -o -name "*.cpp" -o -name "*.h" \) -exec sed -i -E 's/([Uu][Aa][Pp][Ii][^0-9]*)5/\16/g; s/(MINIMAL_SUPPORTED_KERNEL[^0-9]*)5/\16/g' {} +
           chmod +x gradlew
           ./gradlew assembleDebug -x lint
 
