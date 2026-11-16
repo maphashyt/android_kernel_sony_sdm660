@@ -7,11 +7,9 @@ jobs:
   build-apk:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout KernelSU-Next (legacy branch)
-        uses: actions/checkout@v4
-        with:
-          repository: KernelSU-Next/KernelSU-Next
-          ref: legacy
+      - name: Clone KernelSU-Next (legacy branch)
+        run: |
+          git clone --depth 1 -b legacy https://github.com/KernelSU-Next/KernelSU-Next.git ksunext
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -19,17 +17,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK & NDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Rust for ksud
+      - name: Set up Rust and cargo-ndk
         run: |
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-          cargo install cargo-ndk || true
+          cargo install cargo-ndk
 
       - name: Build Legacy Manager APK
         run: |
-          cd manager
+          export ANDROID_NDK_HOME=$(find "$ANDROID_HOME/ndk" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          cd ksunext/manager
           chmod +x gradlew
           ./gradlew assembleDebug
 
@@ -37,4 +33,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KSUNext-Legacy-Manager
-          path: manager/app/build/outputs/apk/debug/*.apk
+          path: ksunext/manager/app/build/outputs/apk/debug/*.apk
