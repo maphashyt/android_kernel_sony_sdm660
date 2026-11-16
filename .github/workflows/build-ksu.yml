@@ -17,7 +17,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf \
             libelf-dev liblz4-tool libssl-dev libxml2-utils lzop pngcrush rsync schedtool \
-            xsltproc zip zlib1g-dev python3 python-is-python3 binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+            xsltproc zip zlib1g-dev python3 python-is-python3 lld llvm \
+            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+
+      - name: Clone Official LineageOS Clang Toolchain
+        run: |
+          git clone --depth 1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git "$HOME/clang"
 
       - name: Integrate KernelSU-Next (UAPI 5 - 465490a2)
         run: |
@@ -33,12 +38,9 @@ jobs:
 
       - name: Configure and Compile Image.gz-dtb
         run: |
-          NDK_CLANG=$(find /usr/local/lib/android/sdk/ndk -type d -name "bin" | grep "toolchains/llvm/prebuilt" | sort -V | tail -n 1)
-          if [ -z "$NDK_CLANG" ]; then
-            git clone --depth 1 https://gitlab.com/Panchajanya1999/azure-clang.git "$HOME/clang"
-            NDK_CLANG="$HOME/clang/bin"
-          fi
-          export PATH="$NDK_CLANG:$PATH"
+          export PATH="$HOME/clang/bin:$PATH"
+          which clang
+          which ld.lld
           clang --version
 
           MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
@@ -46,7 +48,7 @@ jobs:
           make $MAKE_ARGS vendor/sdm660-perf_defconfig vendor/sony/kirin.config
           ./scripts/config --file out/.config -e KSU
           make $MAKE_ARGS olddefconfig
-          make -j$(nproc --all) $MAKE_ARGS KCFLAGS="-Wno-unknown-warning-option -Wno-error" Image.gz-dtb
+          make -j$(nproc --all) $MAKE_ARGS KCFLAGS="-Wno-error" Image.gz-dtb
 
       - name: Package Artifacts
         run: |
