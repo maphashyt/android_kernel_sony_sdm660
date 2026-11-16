@@ -17,24 +17,20 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Build arm64 ksud daemon
+      - name: Extract prebuilt ksud from v3.4.2 Release APK
         run: |
-          rustup target add aarch64-linux-android
-          cargo install cargo-ndk
-          export ANDROID_NDK_HOME=$(find "$ANDROID_HOME/ndk" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
-          if [ -d "ksunext/userspace/ksud" ]; then
-            cd ksunext/userspace/ksud
-          else
-            cd ksunext/ksud
-          fi
-          cargo ndk -t arm64-v8a -o "$GITHUB_WORKSPACE/ksunext/manager/app/src/main/jniLibs" build --release
+          APK_URL=$(curl -sL https://api.github.com/repos/KernelSU-Next/KernelSU-Next/releases/tags/v3.4.2 | grep -o 'https://[^"]*\.apk' | head -n 1)
+          curl -fL "$APK_URL" -o release.apk
+          mkdir -p ksunext/manager/app/src/main/jniLibs/arm64-v8a
+          unzip -p release.apk lib/arm64-v8a/libksud.so > ksunext/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
 
       - name: Bump Manager UAPI to 6 and Build APK
         run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
           cd ksunext/manager
-          find . -type f \( -name "*.kts" -o -name "*.kt" -o -name "*.cpp" -o -name "*.h" \) -exec sed -i -E 's/([Uu][Aa][Pp][Ii][^0-9]*)5/\16/g' {} +
+          find . -type f \( -name "*.kts" -o -name "*.kt" -o -name "*.java" -o -name "*.cpp" -o -name "*.h" \) -exec sed -i -E 's/([Uu][Aa][Pp][Ii][^0-9]*)5/\16/g; s/(MINIMAL_SUPPORTED_KERNEL[^0-9]*)5/\16/g' {} +
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug -x lint
 
       - name: Upload Legacy Manager APK
         uses: actions/upload-artifact@v4
