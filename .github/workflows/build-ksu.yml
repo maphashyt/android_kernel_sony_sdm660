@@ -1,83 +1,75 @@
-name: Build Xperia 10 KernelSU Next
+name: Build Xperia 10 KernelSU-Next (UAPI 5)
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-kernel:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          depth: 1
+          fetch-depth: 1
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git libssl-dev libncurses5-dev lld lz4 python3 unzip zip
+          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf \
+            libelf-dev liblz4-tool libssl-dev libxml2-utils lzop pngcrush rsync schedtool \
+            xsltproc zip zlib1g-dev python3 python-is-python3 clang lld llvm binutils-aarch64-linux-gnu
 
-      - name: Download Modern Clang Toolchain
+      - name: Set up Clang Toolchain
         run: |
-          mkdir -p toolchains/clang
-          CLANG_URL=$(curl -sL https://raw.githubusercontent.com/ZyCromerZ/Clang/main/Clang-main-link.txt | tr -d '\r\n')
-          curl -fL "$CLANG_URL" -o clang.tar.gz
-          tar -xf clang.tar.gz -C toolchains/clang
-          rm -f clang.tar.gz
+          mkdir -p "$HOME/clang"
+          CLANG_URL=$(curl -sL https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep -o 'https://[^"]*Clang-[^"]*\.tar\.gz' | head -n 1)
+          if [ -n "$CLANG_URL" ]; then
+            curl -fL "$CLANG_URL" -o clang.tar.gz
+            tar -xzf clang.tar.gz -C "$HOME/clang"
+          fi
 
-      - name: Integrate KernelSU Next (Legacy) and Manual Syscall Hooks
+      - name: Integrate KernelSU-Next (UAPI 5 - 465490a2)
         run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-          curl -LSs "https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/mainline/Patches/syscall_hook_patches.sh" -o syscall_hook_patches.sh
-          bash syscall_hook_patches.sh
-          grep -n "ksu_handle_sys_reboot" kernel/reboot.c
+          rm -rf KernelSU KernelSU-Next drivers/kernelsu
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+          cd KernelSU-Next
+          git checkout 465490a2
+          cd ..
+          ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+          if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          fi
 
-      - name: Configure and Compile Kernel
+      - name: Configure and Compile Image.gz-dtb
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          CLANG_BIN=$(dirname "$(find "$PWD/toolchains/clang" -name "ld.lld" | head -n 1)")
-          export PATH="$CLANG_BIN:$PATH"
-
-          make O=out \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            vendor/sdm660-perf_defconfig \
-            vendor/sony/common.config \
-            vendor/sony/kirin.config
-
-          ./scripts/config --file out/.config \
-            -e CONFIG_KSU \
-            -e CONFIG_KSU_MANUAL_HOOK \
-            -d CONFIG_KSU_KPROBES_HOOK \
-            -d CONFIG_KPROBES
-
-          yes "" | make O=out LLVM=1 LLVM_IAS=1 olddefconfig
-
-          ./scripts/config --file out/.config \
-            -e CONFIG_KSU \
-            -e CONFIG_KSU_MANUAL_HOOK \
-            -d CONFIG_KSU_KPROBES_HOOK \
-            -d CONFIG_KPROBES
-
-          make -j$(nproc) O=out \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CONFIG_KSU=y \
-            CONFIG_KSU_MANUAL_HOOK=y \
+          if [ -x "$HOME/clang/bin/clang" ]; then
+            export PATH="$HOME/clang/bin:$PATH"
+          fi
+          DEFCONFIG=$(cd arch/arm64/configs && find . -name "*kirin*defconfig" | sed 's|^\./||' | head -n 1)
+          echo "Using defconfig: $DEFCONFIG"
+          make O=out ARCH=arm64 "$DEFCONFIG"
+          ./scripts/config --file out/.config -e KSU
+          make O=out ARCH=arm64 olddefconfig
+          make -j$(nproc --all) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            LLVM=1 \
+            LLVM_IAS=1 \
+            Image.gz-dtb
 
-      - name: Package into AnyKernel3 Zip
+      - name: Package Artifacts
         run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          mkdir -p release_out
+          cp out/arch/arm64/boot/Image.gz-dtb release_out/
+          git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
           cd AnyKernel3
-          zip -r9 ../Xperia10-kirin-KSUNext.zip * -x .git README.md *placeholder
+          zip -r9 ../release_out/Xperia10-kirin-KSUNext.zip ./*
 
-      - name: Upload Flashable Kernel Zip
+      - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Xperia10-kirin-KSUNext
-          path: Xperia10-kirin-KSUNext.zip
+          name: Xperia10-kirin-KSUNext-UAPI5
+          path: release_out/*
